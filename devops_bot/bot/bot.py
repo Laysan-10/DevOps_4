@@ -8,7 +8,7 @@ import os
 from telegram import Update, ForceReply
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler
 
-TOKEN = "7856686194:AAH7dsJKCV8vSEpKseurhHbcM3XNYLK0R10"
+TOKEN = ""
 
 # Подключаем логирование
 logging.basicConfig(
