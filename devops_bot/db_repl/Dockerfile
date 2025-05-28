@@ -1,0 +1,8 @@
+FROM postgres:15-alpine
+
+COPY setup-replica.sh /usr/local/bin/setup-replica.sh
+RUN chmod +x /usr/local/bin/setup-replica.sh
+
+ENTRYPOINT ["/usr/local/bin/setup-replica.sh"]
+
+

@@ -1,0 +1,36 @@
+ervices:
+  postgres-primary:
+    image: 192.168.8.176:5000/db_image:latest 
+    container_name: postgres_primary
+    networks:
+      postgres_net:
+        ipv4_address: 192.168.9.100
+ 
+  postgres-replica-1:
+    image: 192.168.8.176:5000/db_repl_image:latest 
+    container_name: postgres_replica_1
+    environment:
+      PGDATA: /var/lib/postgresql/data
+    networks:
+      postgres_net:
+        ipv4_address: 192.168.9.101
+    volumes:
+      - pg_replica1_data:/var/lib/postgresql/data
+    command: ["/usr/local/bin/setup-replica.sh"]
+
+
+  tg_bot:
+    image: 192.168.8.176:5000/bot_image_3:latest
+    container_name: tg_bot
+    networks:
+      postgres_net:
+        ipv4_address: 192.168.9.102
+networks:
+  postgres_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.9.0/24
+
+volumes:
+  pg_replica1_data:
