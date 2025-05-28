@@ -1,0 +1,61 @@
+- name: Установить зависимости для Python и Git
+  apt:
+    name:
+      - python3
+      - python3-pip
+      - git
+    state: present
+    update_cache: yes
+
+- name: Убедиться, что github.com в known_hosts
+  known_hosts:
+    path: /root/.ssh/known_hosts
+    name: github.com
+    key: "{{ lookup('pipe', 'ssh-keyscan github.com') }}"
+
+- name: Клонировать Telegram-бота из приватного репозитория
+  git:
+    repo: 'git@github.com:Laysan-10/DevOps_4.git'
+    dest: /opt/devops_bot
+    version: docker
+    accept_hostkey: yes
+
+- name: Установить зависимости из requirements.txt
+  pip:
+    requirements: /opt/devops_bot/requirements.txt
+    executable: pip3
+
+- name: Заменить значение переменной TOKEN в bot.py
+  replace:
+    path: /opt/devops_bot/bot/bot.py
+    regexp: 'TOKEN\s*=\s*["\'].*?["\']'
+    replace: 'TOKEN="7856686194:AAH7dsJKCV8vSEpKseurhHbcM3XNYLK0R10"'
+
+- name: Создать systemd unit-файл для запуска Telegram-бота
+  copy:
+    dest: /etc/systemd/system/tg_bot.service
+    content: |
+      [Unit]
+      Description=Telegram Bot
+      After=network.target
+
+      [Service]
+      ExecStart=/usr/bin/python3 /opt/devops_bot/bot/bot.py
+      WorkingDirectory=/opt/devops_bot
+      Restart=always
+      User=root
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: '0644'
+
+- name: Перезагрузить демон systemd (если нужно)
+  systemd:
+    daemon_reload: yes
+
+- name: Запустить и включить сервис Telegram-бота
+  systemd:
+    name: tg_bot.service
+    enabled: true
+    state: restarted
+

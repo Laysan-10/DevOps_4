@@ -1,0 +1,17 @@
+- name: Setup Primary Database
+  hosts: db_primary
+  become: true
+  roles:
+    - db_primary
+
+- name: Setup Replica Database
+  hosts: db_replica
+  become: true
+  roles:
+    - db_replica
+
+- name: Deploy Telegram Bot
+  hosts: tg_bot
+  become: true
+  roles:
+    - tg_bot
