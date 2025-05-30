@@ -1,17 +1,160 @@
-- name: Setup Primary Database
-  hosts: db_primary
-  become: true
-  roles:
-    - db_primary
-
-- name: Setup Replica Database
-  hosts: db_replica
-  become: true
-  roles:
-    - db_replica
-
-- name: Deploy Telegram Bot
+- name: Деплой Telegram бота
   hosts: tg_bot
   become: true
-  roles:
-    - tg_bot
+
+  vars:
+    bot_repo: "https://github.com/Laysan-10/DevOps_4.git"
+    app_dir: "/opt/tg_bot"
+    bot_subdir: "devops_bot/bot"
+    venv_dir: "{{ app_dir }}/venv"
+    bot_script: "bot.py"
+    env_file_path: "{{ app_dir }}/{{ bot_subdir }}/.env"
+    service_name: "tg_bot"
+
+  tasks:
+
+    - name: Проверить наличие локального .env
+      stat:
+        path: .env
+      delegate_to: localhost
+      register: env_file_status
+
+    - name: Прервать выполнение, если .env не найден
+      fail:
+        msg: "Файл .env не найден рядом с playbook!"
+      when: not env_file_status.stat.exists
+      delegate_to: localhost
+
+    - name: Прочитать TOKEN из локального .env
+      set_fact:
+        local_token: "{{ lookup('ini', 'TOKEN type=properties file=.env') }}"
+      delegate_to: localhost
+
+    - name: Убедиться, что каталог для бота существует
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Клонировать репозиторий Telegram-бота
+      git:
+        repo: "{{ bot_repo }}"
+        dest: "{{ app_dir }}"
+        version: docker
+        force: true
+
+    - name: Установить зависимости в виртуальном окружении
+      pip:
+        requirements: "{{ app_dir }}/{{ bot_subdir }}/requirements.txt"
+        virtualenv: "{{ venv_dir }}"
+        virtualenv_command: python3 -m venv
+
+    - name: Создать .env файл на целевой машине
+      copy:
+        dest: "{{ env_file_path }}"
+        content: |
+          TOKEN={{ local_token }}
+        mode: '0600'
+
+    - name: Создать systemd unit-файл
+      copy:
+        dest: "/etc/systemd/system/{{ service_name }}.service"
+        content: |
+          [Unit]
+          Description=Telegram Bot
+          After=network.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory={{ app_dir }}/{{ bot_subdir }}
+          ExecStart={{ venv_dir }}/bin/python {{ bot_script }}
+          Restart=always
+          EnvironmentFile={{ env_file_path }}
+
+          [Install]
+          WantedBy=multi-user.target
+      notify: Перезапуск сервиса
+
+  handlers:
+    - name: Перезапуск сервиса
+      systemd:
+        name: "{{ service_name }}"
+        daemon_reload: true
+        enabled: true
+        state: restarted
+
+
+
+- name: Настройка PostgreSQL Primary
+  hosts: primary
+  become: true
+
+  vars:
+    pg_version: 15
+    rep_user: replication
+    rep_pass: replicapass
+
+  tasks:
+    - name: Установить PostgreSQL
+      apt:
+        name: postgresql-{{ pg_version }}
+        update_cache: yes
+
+    - name: Настроить postgresql.conf
+      lineinfile:
+        path: "/etc/postgresql/{{ pg_version }}/main/postgresql.conf"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      with_items:
+        - { regexp: '^#?listen_addresses', line: "listen_addresses = '*'" }
+        - { regexp: '^#?wal_level', line: "wal_level = replica" }
+        - { regexp: '^#?max_wal_senders', line: "max_wal_senders = 10" }
+        - { regexp: '^#?wal_keep_size', line: "wal_keep_size = 64" }
+
+    - name: Разрешить подключения реплик
+      lineinfile:
+        path: "/etc/postgresql/{{ pg_version }}/main/pg_hba.conf"
+        line: "host replication {{ rep_user }} 0.0.0.0/0 md5"
+
+    - name: Перезапуск PostgreSQL
+      service: { name: postgresql, state: restarted, enabled: true }
+
+    - name: Создать пользователя для репликации
+      become_user: postgres
+      shell: |
+        psql -tc "SELECT 1 FROM pg_roles WHERE rolname='{{ rep_user }}'" | grep -q 1 || \
+        psql -c "CREATE ROLE {{ rep_user }} WITH REPLICATION LOGIN ENCRYPTED PASSWORD '{{ rep_pass }}';"
+
+
+- name: Настройка PostgreSQL реплик
+  hosts: replicas
+  become: true
+
+  vars:
+    pg_version: 15
+    rep_user: replication
+    rep_pass: replicapass
+    primary_ip: 192.168.1.53
+    pg_data_dir: "/var/lib/postgresql/{{ pg_version }}/main"
+
+  tasks:
+    - name: Установить PostgreSQL
+      apt:
+        name: postgresql-{{ pg_version }}
+        update_cache: yes
+
+    - name: Остановить PostgreSQL
+      service: { name: postgresql, state: stopped }
+
+    - name: Очистить старую базу
+      file: { path: "{{ pg_data_dir }}", state: absent }
+
+    - name: pg_basebackup от primary
+      become_user: postgres
+      command: >
+        pg_basebackup -h {{ primary_ip }} -D {{ pg_data_dir }} -U {{ rep_user }} -Fp -Xs -P -R
+      environment:
+        PGPASSWORD: "{{ rep_pass }}"
+
+    - name: Запустить PostgreSQL
+      service: { name: postgresql, state: started, enabled: true }
