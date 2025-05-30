@@ -12,11 +12,11 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN")
 
 # Подключаем логирование
-logging.basicConfig(
-    filename='logfile.txt', format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
-)
+# logging.basicConfig(
+#     filename='logfile.txt', format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
+# )
 
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 
 def start(update: Update, context):
     update.message.reply_text('привет\n/find_phone_number - найти номер\n/find_email- найти адрес почты\n/verify_password - сложность пароля\n/ssh_connect - подключение по ssh\n/exit - выход')
