@@ -8,7 +8,8 @@ import os
 from telegram import Update, ForceReply
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler
 
-TOKEN = ""
+load_dotenv()
+TOKEN = os.getenv("TOKEN")
 
 # Подключаем логирование
 logging.basicConfig(
